@@ -86,6 +86,7 @@ class ProfileCreate(BaseModel):
     gender: Optional[str] = Field(None, examples=["Male"])
     address: Optional[str] = Field(None, examples=["123, MG Road"])
     city: Optional[str] = Field(None, examples=["Mumbai"])
+    state: Optional[str] = Field(None, examples=["Maharashtra"])  # ⬅️ NEW
     country: Optional[str] = Field(None, examples=["India"])
     role: RoleEnum = Field(default=RoleEnum.USER, examples=["user", "institution"])
     
@@ -108,10 +109,10 @@ class ProfileUpdate(BaseModel):
     gender: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None  # ⬅️ NEW
     country: Optional[str] = None
     is_active: Optional[bool] = None
     role: Optional[RoleEnum] = Field(None, examples=["user", "institution"])
-
 
 class ProfileResponse(BaseModel):
     id: UUID
@@ -124,6 +125,7 @@ class ProfileResponse(BaseModel):
     gender: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None  # ⬅️ NEW
     country: Optional[str] = None
     role: str
     is_active: bool
