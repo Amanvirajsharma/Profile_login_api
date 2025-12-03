@@ -4,7 +4,7 @@ from app.auth.password import hash_password, verify_password
 from app.auth.jwt_handler import create_access_token
 from app.config import get_settings
 from typing import Optional
-from datetime import timedelta
+from datetime import timedelta, datetime
 from uuid import UUID
 
 settings = get_settings()
@@ -17,39 +17,42 @@ class AuthService:
         self.client = db_client
         self.table = "users"
     
+    def _convert_enums(self, data: dict) -> dict:
+        """Convert all enums to string values"""
+        for key, value in data.items():
+            if hasattr(value, 'value'):
+                data[key] = value.value
+        return data
+    
     def register_user(self, user_data: UserRegister) -> Optional[dict]:
-        """
-        New user register karta hai
-        Password hash karke store karta hai
-        """
-        # Hash the password
+        """New user register karta hai"""
         hashed_password = hash_password(user_data.password)
         
-        # Prepare data
         data = {
             "name": user_data.name,
             "email": user_data.email,
             "password_hash": hashed_password,
-            "role": user_data.role.value if hasattr(user_data.role, 'value') else user_data.role
+            "role": user_data.role.value if hasattr(user_data.role, 'value') else user_data.role,
+            "gender": user_data.gender.value if user_data.gender and hasattr(user_data.gender, 'value') else user_data.gender,
+            "city": user_data.city.value if user_data.city and hasattr(user_data.city, 'value') else user_data.city,
+            "state": user_data.state.value if hasattr(user_data.state, 'value') else user_data.state,
+            "country": user_data.country.value if hasattr(user_data.country, 'value') else user_data.country,
         }
         
-        # Insert into database
+        # Remove None values
+        data = {k: v for k, v in data.items() if v is not None}
+        
         response = self.client.from_(self.table).insert(data).execute()
         
         if response.data:
             user = response.data[0]
-            # Remove password_hash from response
             user.pop('password_hash', None)
             return user
         
         return None
     
     def login_user(self, email: str, password: str) -> Optional[dict]:
-        """
-        User login karta hai
-        Returns token and user data if successful
-        """
-        # Get user by email
+        """User login karta hai"""
         response = self.client.from_(self.table)\
             .select("*")\
             .eq("email", email)\
@@ -60,30 +63,25 @@ class AuthService:
         
         user = response.data[0]
         
-        # Verify password
         if not verify_password(password, user.get("password_hash", "")):
             return None
         
-        # Check if user is active
         if not user.get("is_active", True):
             return None
         
-        # Update last login
         self.update_last_login(user["id"])
         
-        # Create access token
         access_token = create_access_token(
             data={"sub": str(user["id"]), "role": user["role"]},
             expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
         )
         
-        # Remove password_hash from user data
         user.pop('password_hash', None)
         
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "expires_in": settings.access_token_expire_minutes * 60,  # in seconds
+            "expires_in": settings.access_token_expire_minutes * 60,
             "user": user
         }
     
@@ -117,8 +115,6 @@ class AuthService:
     
     def update_last_login(self, user_id: str) -> None:
         """Last login time update karta hai"""
-        from datetime import datetime
-        
         self.client.from_(self.table)\
             .update({"last_login": datetime.utcnow().isoformat()})\
             .eq("id", user_id)\
@@ -153,15 +149,28 @@ class AuthService:
         
         return len(response.data) > 0
     
-    def get_all_users(self, page: int = 1, limit: int = 10, role: Optional[str] = None) -> tuple[list, int]:
+    def get_all_users(
+        self, 
+        page: int = 1, 
+        limit: int = 10, 
+        role: Optional[str] = None,
+        city: Optional[str] = None,
+        gender: Optional[str] = None
+    ) -> tuple[list, int]:
         """All users fetch karta hai"""
         offset = (page - 1) * limit
         
         query = self.client.from_(self.table)\
-            .select("id, name, email, role, is_active, is_verified, created_at, last_login", count="exact")
+            .select("id, name, email, role, gender, city, state, country, is_active, is_verified, created_at, last_login", count="exact")
         
         if role:
             query = query.eq("role", role)
+        
+        if city:
+            query = query.eq("city", city)
+        
+        if gender:
+            query = query.eq("gender", gender)
         
         response = query\
             .order("created_at", desc=True)\

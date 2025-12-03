@@ -5,6 +5,8 @@ from app.models import (
     APIResponse, 
     PaginatedResponse,
     RoleEnum,
+    CityEnum,
+    GenderEnum,
     RoleStats
 )
 from app.services.profile_service import profile_service
@@ -14,13 +16,17 @@ from typing import Optional
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
 
 
-# ============ CREATE ============
 @router.post("/", response_model=APIResponse, status_code=201)
 def create_profile(profile: ProfileCreate):
     """
     ✨ Naya profile banao
     
-    - **role**: 'user' ya 'institution' (default: user)
+    Dropdowns:
+    - **role**: user, institution (default: user)
+    - **gender**: Male, Female
+    - **city**: Bhopal, Indore
+    - **state**: Madhya Pradesh (default)
+    - **country**: India (default)
     """
     existing = profile_service.get_profile_by_email(profile.email)
     if existing:
@@ -33,26 +39,30 @@ def create_profile(profile: ProfileCreate):
     
     return APIResponse(
         success=True,
-        message=f"Profile created as {profile.role.value}!",
+        message=f"Profile created!",
         data=new_profile
     )
 
 
-# ============ READ ALL ============
 @router.get("/", response_model=PaginatedResponse)
 def get_all_profiles(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     is_active: Optional[bool] = None,
-    role: Optional[RoleEnum] = Query(None, description="Filter by role: user or institution")  # NEW
+    role: Optional[RoleEnum] = Query(None, description="Filter: user or institution"),
+    city: Optional[CityEnum] = Query(None, description="Filter: Bhopal or Indore"),
+    gender: Optional[GenderEnum] = Query(None, description="Filter: Male or Female")
 ):
     """
     📋 Saare profiles dekho with filters
-    
-    - **role**: Filter by 'user' or 'institution'
     """
     role_value = role.value if role else None
-    profiles, total = profile_service.get_all_profiles(page, limit, is_active, role_value)
+    city_value = city.value if city else None
+    gender_value = gender.value if gender else None
+    
+    profiles, total = profile_service.get_all_profiles(
+        page, limit, is_active, role_value, city_value, gender_value
+    )
     
     return PaginatedResponse(
         success=True,
@@ -64,15 +74,12 @@ def get_all_profiles(
     )
 
 
-# ============ GET ONLY USERS ============
 @router.get("/users", response_model=PaginatedResponse)
 def get_all_users(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100)
 ):
-    """
-    👤 Sirf Users dekho (role = 'user')
-    """
+    """👤 Sirf Users dekho"""
     profiles, total = profile_service.get_users(page, limit)
     
     return PaginatedResponse(
@@ -85,15 +92,12 @@ def get_all_users(
     )
 
 
-# ============ GET ONLY INSTITUTIONS ============
 @router.get("/institutions", response_model=PaginatedResponse)
 def get_all_institutions(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100)
 ):
-    """
-    🏛️ Sirf Institutions dekho (role = 'institution')
-    """
+    """🏛️ Sirf Institutions dekho"""
     profiles, total = profile_service.get_institutions(page, limit)
     
     return PaginatedResponse(
@@ -106,14 +110,9 @@ def get_all_institutions(
     )
 
 
-# ============ ROLE STATS ============
 @router.get("/stats/roles", response_model=APIResponse)
 def get_role_statistics():
-    """
-    📊 Role wise statistics
-    
-    Returns count of users and institutions
-    """
+    """📊 Role wise statistics"""
     stats = profile_service.get_role_stats()
     
     return APIResponse(
@@ -123,18 +122,13 @@ def get_role_statistics():
     )
 
 
-# ============ SEARCH ============
 @router.get("/search/", response_model=APIResponse)
 def search_profiles(
     q: str = Query(..., min_length=2),
     limit: int = Query(10, ge=1, le=50),
-    role: Optional[RoleEnum] = Query(None, description="Filter by role")  # NEW
+    role: Optional[RoleEnum] = Query(None)
 ):
-    """
-    🔍 Profile search karo
-    
-    - **role**: Optionally filter by role
-    """
+    """🔍 Profile search karo"""
     role_value = role.value if role else None
     profiles = profile_service.search_profiles(q, limit, role_value)
     
@@ -145,12 +139,9 @@ def search_profiles(
     )
 
 
-# ============ GET SINGLE ============
 @router.get("/{profile_id}", response_model=APIResponse)
 def get_profile(profile_id: UUID):
-    """
-    👤 Ek specific profile dekho
-    """
+    """👤 Ek specific profile dekho"""
     profile = profile_service.get_profile_by_id(profile_id)
     
     if not profile:
@@ -163,12 +154,9 @@ def get_profile(profile_id: UUID):
     )
 
 
-# ============ UPDATE ============
 @router.put("/{profile_id}", response_model=APIResponse)
 def update_profile(profile_id: UUID, profile_update: ProfileUpdate):
-    """
-    ✏️ Profile update karo (including role)
-    """
+    """✏️ Profile update karo"""
     existing = profile_service.get_profile_by_id(profile_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Profile not found!")
@@ -182,12 +170,9 @@ def update_profile(profile_id: UUID, profile_update: ProfileUpdate):
     )
 
 
-# ============ DELETE ============
 @router.delete("/{profile_id}", response_model=APIResponse)
 def delete_profile(profile_id: UUID):
-    """
-    🗑️ Profile delete karo
-    """
+    """🗑️ Profile delete karo"""
     existing = profile_service.get_profile_by_id(profile_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Profile not found!")

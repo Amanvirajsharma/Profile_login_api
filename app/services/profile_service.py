@@ -11,17 +11,22 @@ class ProfileService:
         self.client = db_client
         self.table = "profiles"
     
+    def _convert_enums(self, data: dict) -> dict:
+        """Convert all enums to string values"""
+        for key, value in data.items():
+            if hasattr(value, 'value'):
+                data[key] = value.value
+            elif isinstance(value, str):
+                pass
+            elif value is not None and hasattr(value, '__str__'):
+                if key == 'date_of_birth':
+                    data[key] = str(value)
+        return data
+    
     def create_profile(self, profile_data: ProfileCreate) -> Optional[dict]:
         """Create new profile"""
         data = profile_data.model_dump(exclude_none=True)
-        
-        # Convert date to string
-        if 'date_of_birth' in data and data['date_of_birth']:
-            data['date_of_birth'] = str(data['date_of_birth'])
-        
-        # Convert enum to string
-        if 'role' in data:
-            data['role'] = data['role'].value if hasattr(data['role'], 'value') else data['role']
+        data = self._convert_enums(data)
         
         response = self.client.from_(self.table).insert(data).execute()
         return response.data[0] if response.data else None
@@ -49,20 +54,26 @@ class ProfileService:
         page: int = 1, 
         limit: int = 10,
         is_active: Optional[bool] = None,
-        role: Optional[str] = None  # NEW PARAMETER
+        role: Optional[str] = None,
+        city: Optional[str] = None,
+        gender: Optional[str] = None
     ) -> tuple[list, int]:
         """Get all profiles with pagination and filters"""
         offset = (page - 1) * limit
         
         query = self.client.from_(self.table).select("*", count="exact")
         
-        # Filter by active status
         if is_active is not None:
             query = query.eq("is_active", is_active)
         
-        # Filter by role - NEW
         if role is not None:
             query = query.eq("role", role)
+        
+        if city is not None:
+            query = query.eq("city", city)
+        
+        if gender is not None:
+            query = query.eq("gender", gender)
         
         response = query\
             .order("created_at", desc=True)\
@@ -79,13 +90,7 @@ class ProfileService:
         if not data:
             return self.get_profile_by_id(profile_id)
         
-        # Convert date
-        if 'date_of_birth' in data and data['date_of_birth']:
-            data['date_of_birth'] = str(data['date_of_birth'])
-        
-        # Convert enum to string - NEW
-        if 'role' in data:
-            data['role'] = data['role'].value if hasattr(data['role'], 'value') else data['role']
+        data = self._convert_enums(data)
         
         response = self.client.from_(self.table)\
             .update(data)\
@@ -107,39 +112,34 @@ class ProfileService:
         self, 
         search_term: str, 
         limit: int = 10,
-        role: Optional[str] = None  # NEW PARAMETER
+        role: Optional[str] = None
     ) -> list:
         """Search profiles by name or email"""
         query = self.client.from_(self.table)\
             .select("*")\
             .or_(f"full_name.ilike.%{search_term}%,email.ilike.%{search_term}%")
         
-        # Filter by role - NEW
         if role is not None:
             query = query.eq("role", role)
         
         response = query.limit(limit).execute()
         return response.data
     
-    # ============ NEW METHODS ============
-    
     def get_users(self, page: int = 1, limit: int = 10) -> tuple[list, int]:
-        """Get only users (role = 'user')"""
+        """Get only users"""
         return self.get_all_profiles(page, limit, role="user")
     
     def get_institutions(self, page: int = 1, limit: int = 10) -> tuple[list, int]:
-        """Get only institutions (role = 'institution')"""
+        """Get only institutions"""
         return self.get_all_profiles(page, limit, role="institution")
     
     def get_role_stats(self) -> dict:
         """Get count of users and institutions"""
-        # Get users count
         users_response = self.client.from_(self.table)\
             .select("id", count="exact")\
             .eq("role", "user")\
             .execute()
         
-        # Get institutions count
         institutions_response = self.client.from_(self.table)\
             .select("id", count="exact")\
             .eq("role", "institution")\
